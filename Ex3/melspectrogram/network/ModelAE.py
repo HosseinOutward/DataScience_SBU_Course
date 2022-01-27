@@ -1,69 +1,104 @@
 import torch
 from torch import nn
-from torch.autograd import Variable
+from torch.nn import functional as F
+from torch import Tensor
+from torch import nn
+from abc import abstractmethod
 
 
-class Residual(nn.Module):
-    def __init__(self, fn):
+class Encoder(nn.Module):
+    def __init__(self, encoded_space_dim, fc2_input_dim):
         super().__init__()
-        self.fn = fn
+
+        ### Convolutional section
+        self.encoder_cnn = nn.Sequential(
+            nn.Conv2d(9, 16, 4, stride=2, padding=2),
+            nn.ReLU(True),
+            nn.Conv2d(16, 24, 3, stride=2, padding=1),
+            nn.BatchNorm2d(24),
+            nn.ReLU(True),
+            nn.Conv2d(24, 32, 3, stride=2, padding=0),
+            nn.ReLU(True)
+        )
+
+        ### Flatten layer
+        self.flatten = nn.Flatten(start_dim=1)
+        ### Linear section
+        self.encoder_lin = nn.Sequential(
+            nn.Linear(512, 128),
+            nn.ReLU(True),
+            nn.Linear(128, encoded_space_dim)
+        )
 
     def forward(self, x):
-        return self.fn(x) + x
-
-
-class ConvMixer(nn.Module):
-    def __init__(self):
-        super(ConvMixer, self).__init__()
-
-        # in_shape = (3, 224, 224)
-        h = 768  # 1536
-        depth = 15  # 32
-        p = 7
-        k = 7  # 9
-
-        self.patch_embedding_net = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=h, kernel_size=p, stride=p),
-            nn.GELU(),
-            nn.BatchNorm2d(h)
-        )
-
-        self.conv_mixer_layer = nn.Sequential(
-            *[nn.Sequential(
-                Residual(nn.Sequential(
-                    nn.Conv2d(h, h, kernel_size=k, groups=h, padding="same"),
-                    nn.GELU(),
-                    nn.BatchNorm2d(h)
-                )),
-                nn.Conv2d(h, h, kernel_size=1),
-                nn.GELU(),
-                nn.BatchNorm2d(h)
-            ) for _ in range(depth)]
-        )
-
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(768, 128, kernel_size=k, stride=p),
-            nn.GELU(),
-            nn.BatchNorm2d(128),
-
-            nn.UpsamplingNearest2d(scale_factor=2),
-            nn.Conv2d(128, 1, kernel_size=k, stride=2, padding=3),
-            nn.Sigmoid()
-        )
-
-    def forward(self, input_data):
-        x = self.patch_embedding_net(input_data)
-        x = self.conv_mixer_layer(x)
-        x = self.decoder(x)
+        x = self.encoder_cnn(x)
+        x = self.flatten(x)
+        x = self.encoder_lin(x)
         return x
 
 
-if __name__ == '__main__':
-    model = ConvMixer()
-    print(model)
-    # model = model.cuda()
-    model.eval()
-    image = torch.rand((1, 3, 224, 224))  # .cuda()
-    image = Variable(image)
-    out = model(image)
-    print(out)
+class Decoder(nn.Module):
+
+    def __init__(self, encoded_space_dim,fc2_input_dim):
+        super().__init__()
+        self.decoder_lin = nn.Sequential(
+            nn.Linear(encoded_space_dim, 128),
+            nn.ReLU(True),
+            nn.Linear(128, 4 * 4 * 32),
+            nn.ReLU(True)
+        )
+
+        self.unflatten = nn.Unflatten(dim=1,
+        unflattened_size=(32, 4, 4))
+
+        self.decoder_conv = nn.Sequential(
+            nn.ConvTranspose2d(32, 24, 3, stride=2, output_padding=0),
+            nn.BatchNorm2d(24),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(24, 16, 3, stride=2, padding=2, output_padding=1),
+            nn.BatchNorm2d(16),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(16, 9, 4, stride=2, padding=1, output_padding=0)
+        )
+
+    def forward(self, x):
+        x = self.decoder_lin(x)
+        x = self.unflatten(x)
+        x = self.decoder_conv(x)
+        x = torch.sigmoid(x)
+        return x
+
+
+# class ConvAutoencoder(nn.Module):
+#     def __init__(self):
+#         super(ConvAutoencoder, self).__init__()
+#
+#         # Encoder
+#         self.conv1 = nn.Conv2d(9, 24, 3, padding=1)
+#         self.conv2 = nn.Conv2d(24, 10, 3, padding=1)
+#         self.conv2 = nn.Conv2d(24, 10, 3, padding=1)
+#         self.pool = nn.MaxPool2d(2, 2)
+#
+#         # Decoder
+#         self.t_conv1 = nn.ConvTranspose2d(10, 24, 2, stride=2)
+#         self.t_conv2 = nn.ConvTranspose2d(24, 9, 2, stride=2)
+#
+#     def enc(self, x):
+#         x = F.relu(self.conv1(x))
+#         x = self.pool(x)
+#         x = F.relu(self.conv2(x))
+#         x = self.pool(x)
+#
+#         return x
+#
+#     def dec(self, x):
+#         x = F.relu(self.t_conv1(x))
+#         x = F.sigmoid(self.t_conv2(x))
+#
+#         return x
+#
+#     def forward(self, x):
+#         x = self.enc(x)
+#         x = self.dec(x)
+#
+#         return x
