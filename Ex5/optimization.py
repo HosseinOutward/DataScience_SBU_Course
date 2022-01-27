@@ -65,7 +65,7 @@ class Regressor:
         return grad
 
     def fit(self, optimizer='sgd_optimizer', n_iters=500,
-            render_animation=False, gradiant_image=False):
+            render_animation=False, gradiant_image=True):
         """
         Trains the model
         optimizer: the optimization algorithm to use
@@ -217,7 +217,7 @@ class Regressor:
 
         return w+dw
 
-    def adam_optimizer_fedup(self, alpha=0.5, minibatch=100, beta1=0.36, beta2=0.99, epsilon=1e-6):
+    def adam_optimizer(self, alpha=0.5, minibatch=100, beta1=0.36, beta2=0.99, epsilon=1e-6):
         """
         Performs Adam optimization to optimize the weights
         m: the first moment vector
@@ -291,13 +291,16 @@ class Regressor:
         ax[0].set_xlabel(r'$x$')
         ax[0].set_ylabel(r'$y$')
         ax[0].set_title('Data and fit')
-        ax[0].legend(loc='upper left', fontsize='small')
+        # ax[0].legend(loc='upper left', fontsize='small')
 
+        fig.suptitle(f'Optimizer:{optimizer}')
         plt.tight_layout()
         plt.savefig('%s.png'%optimizer)
         plt.show()
 
 
 if __name__ == "__main__":
-    a=Regressor()
-    a.fit()
+    for op in ['gradient_descent','sgd_optimizer','sgd_momentum',
+               'adagrad_optimizer','rmsprop_optimizer','adam_optimizer']:
+        a=Regressor()
+        a.fit(optimizer=op)
